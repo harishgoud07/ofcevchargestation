@@ -11,6 +11,11 @@ BAYS = {
     "7": "tesla",
 }
 
+# ── Admin config ─────────────────────────────────────
+# Your Telegram user ID — only you can force-release bays
+# Find your ID by messaging @userinfobot on Telegram
+ADMIN_ID = os.environ.get("ADMIN_TELEGRAM_ID", "")
+
 # ── Database ─────────────────────────────────────────
 def get_db():
     return psycopg2.connect(os.environ["DATABASE_URL"], sslmode="require")
@@ -151,34 +156,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Status ────────────────────────────────────────
     if cmd == "status":
-        lines = [
-            "⚡ BELK CHARGING STATION",
-            "━━━━━━━━━━━━━━━",
-            "",
-            "🔋  Universal — Bays 1 to 4",
-        ]
+        lines = ["⚡ BELK CHARGING STATION", "", "⚡ Universal —  Bays 1 to 4", ""]
         for b in ["1","2","3","4"]:
             s = state[b]
             if s["user_phone"]:
                 n = get_user_name(s["user_phone"]) or "Someone"
-                lines.append(f"  🔴  Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
+                lines.append(f"🔴 Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
             else:
-                lines.append(f"  🟢  Bay {b}  Free")
-        lines += ["", "⚡  Tesla Only — Bays 5 to 7"]
+                lines.append(f"🟢 Bay {b}  Free")
+        lines += ["", "⚡ Tesla Only — Bays 5 to 7", ""]
         for b in ["5","6","7"]:
             s = state[b]
             if s["user_phone"]:
                 n = get_user_name(s["user_phone"]) or "Someone"
-                lines.append(f"  🔴  Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
+                lines.append(f"🔴 Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
             else:
-                lines.append(f"  🟢  Bay {b}  Free")
+                lines.append(f"🟢 Bay {b}  Free")
         fu = sum(1 for b in ["1","2","3","4"] if not state[b]["user_phone"])
         ft = sum(1 for b in ["5","6","7"] if not state[b]["user_phone"])
-        lines += [
-            "",
-            "━━━━━━━━━━━━━━━",
-            f"🔋  {fu}/4 universal free    ⚡  {ft}/3 Tesla free"
-        ]
+        lines += ["", f"⚡ {fu}/4 universal free    ⚡ {ft}/3 Tesla free"]
         await reply("\n".join(lines))
 
     # ── Claim ─────────────────────────────────────────
@@ -227,6 +223,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply("🟢  All 7 bays are free!")
         else:
             await reply("\n".join(lines))
+
+    # ── Admin force release ───────────────────────────
+    elif cmd == "admin" and len(parts) == 3 and parts[1].lower() == "release":
+        if user_id != ADMIN_ID:
+            await reply("❌  You are not authorized to use admin commands.")
+        else:
+            bid = parts[2]
+            if bid not in BAYS:
+                await reply("❌  Invalid bay.")
+            elif not state[bid]["user_phone"]:
+                await reply(f"ℹ️  Bay {bid} is already free.")
+            else:
+                n = get_user_name(state[bid]["user_phone"]) or "Someone"
+                t = elapsed(state[bid]["claimed_at"])
+                # Notify the person being force-released
+                try:
+                    await context.bot.send_message(
+                        chat_id=state[bid]["user_phone"],
+                        text=f"⚠️  Bay {bid} has been released by admin after {t}.
+Please unplug your car."
+                    )
+                except:
+                    pass
+                release(bid)
+                await reply(f"✅  Bay {bid} force-released. Was held by {n} for {t}.")
 
     # ── Help ──────────────────────────────────────────
     else:
