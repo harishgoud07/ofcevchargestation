@@ -86,7 +86,7 @@ async def check_overtime(context: ContextTypes.DEFAULT_TYPE):
         for bid, bay in state.items():
             if not bay["user_phone"] or not bay["claimed_at"]: continue
             hours = (now - float(bay["claimed_at"])) / 3600
-            if hours >= 7:
+            if hours >= 5:
                 name  = get_user_name(bay["user_phone"]) or "there"
                 btype = "Tesla only" if BAYS[bid] == "tesla" else "Universal"
                 await context.bot.send_message(
