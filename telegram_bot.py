@@ -241,8 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=state[bid]["user_phone"],
-                        text=f"⚠️  Bay {bid} has been released by admin after {t}.
-Please unplug your car."
+                        text=f"⚠️  Bay {bid} has been released by admin after {t}.\nPlease unplug your car."
                     )
                 except:
                     pass
