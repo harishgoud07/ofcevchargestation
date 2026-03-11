@@ -1,8 +1,7 @@
 from telegram import Update
-from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from apscheduler.schedulers.background import BackgroundScheduler
+from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 from datetime import datetime
-import os, psycopg2, psycopg2.extras, asyncio
+import os, psycopg2, psycopg2.extras
 
 # ── Bay config ───────────────────────────────────────
 BAYS = {
@@ -11,7 +10,6 @@ BAYS = {
     "5": "tesla",     "6": "tesla",
     "7": "tesla",
 }
-# ─────────────────────────────────────────────────────
 
 # ── Database ─────────────────────────────────────────
 def get_db():
@@ -80,7 +78,31 @@ def elapsed(ts):
     diff = int((datetime.now().timestamp() - float(ts)) / 60)
     return f"{diff}m" if diff < 60 else f"{diff//60}h {diff%60}m"
 
-# ── Bot logic ─────────────────────────────────────────
+# ── Overtime alert (runs via job queue) ──────────────
+async def check_overtime(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        state = get_state()
+        now   = datetime.now().timestamp()
+        for bid, bay in state.items():
+            if not bay["user_phone"] or not bay["claimed_at"]: continue
+            hours = (now - float(bay["claimed_at"])) / 3600
+            if hours >= 7:
+                name  = get_user_name(bay["user_phone"]) or "there"
+                btype = "Tesla-only ⚡" if BAYS[bid] == "tesla" else "Universal 🔌"
+                await context.bot.send_message(
+                    chat_id=bay["user_phone"],
+                    text=(
+                        f"⏰ *Belk Charging Station Alert*\n\n"
+                        f"Hi {name}, you've had Bay {bid} ({btype}) "
+                        f"for *{int(hours)} hours*.\n\n"
+                        f"Please unplug if you're done so others can charge. 🙏"
+                    ),
+                    parse_mode="Markdown"
+                )
+    except Exception as e:
+        print(f"Overtime check error: {e}")
+
+# ── Message handler ───────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     body    = update.message.text.strip()
@@ -118,16 +140,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Update name ───────────────────────────────────
     if cmd == "myname" and len(parts) >= 2:
-        new_name = " ".join(parts[1:])
-        save_user_name(user_id, new_name)
-        await reply(f"✅ Name updated to *{new_name}*!")
+        save_user_name(user_id, " ".join(parts[1:]))
+        await reply(f"✅ Name updated to *{' '.join(parts[1:])}*!")
         return
 
     state = get_state()
 
     # ── Status ────────────────────────────────────────
     if cmd == "status":
-        lines = ["⚡ *Belk Charging Station*\n", "🔌 *Universal (Bays 1–4)*"]
+        lines = ["⚡ *Belk Charging Station*\n", "🔌 *Universal \\(Bays 1–4\\)*"]
         for b in ["1","2","3","4"]:
             s = state[b]
             if s["user_phone"]:
@@ -135,7 +156,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines.append(f"  🔴 Bay {b} — {n} ({elapsed(s['claimed_at'])})")
             else:
                 lines.append(f"  ✅ Bay {b} — Free")
-        lines.append("\n⚡ *Tesla Only (Bays 5–7)*")
+        lines.append("\n⚡ *Tesla Only \\(Bays 5–7\\)*")
         for b in ["5","6","7"]:
             s = state[b]
             if s["user_phone"]:
@@ -146,40 +167,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fu = sum(1 for b in ["1","2","3","4"] if not state[b]["user_phone"])
         ft = sum(1 for b in ["5","6","7"] if not state[b]["user_phone"])
         lines.append(f"\n🔌 {fu}/4 universal  ⚡ {ft}/3 Tesla free")
-        await reply("\n".join(lines))
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
     # ── Claim ─────────────────────────────────────────
     elif cmd == "claim" and len(parts) == 2:
         bid = parts[1]
         if bid not in BAYS:
-            await reply("❌ Invalid bay. Universal: 1–4 🔌  Tesla: 5–7 ⚡")
+            await reply("❌ Invalid bay\\. Universal: 1–4 🔌  Tesla: 5–7 ⚡")
         elif state[bid]["user_phone"]:
             n = get_user_name(state[bid]["user_phone"]) or "Someone"
-            await reply(
-                f"⚠️ Bay {bid} is taken by *{n}* "
-                f"({elapsed(state[bid]['claimed_at'])}).\n"
-                f"Send *status* to find a free bay."
-            )
+            await reply(f"⚠️ Bay {bid} is taken by *{n}* \\({elapsed(state[bid]['claimed_at'])}\\)\\.\nSend *status* to find a free bay\\.")
         else:
-            label = "Tesla-only ⚡" if BAYS[bid] == "tesla" else "Universal 🔌"
-            warn  = "\n⚠️ This is a *Tesla-only* bay." if BAYS[bid] == "tesla" else ""
+            label = "Tesla\\-only ⚡" if BAYS[bid] == "tesla" else "Universal 🔌"
+            warn  = "\n⚠️ This is a *Tesla\\-only* bay\\." if BAYS[bid] == "tesla" else ""
             claim(bid, user_id)
-            await reply(f"✅ Bay {bid} ({label}) claimed, *{name}*!{warn}\nSend *release {bid}* when done.")
+            await reply(f"✅ Bay {bid} \\({label}\\) claimed, *{name}*\\!{warn}\nSend *release {bid}* when done\\.")
 
     # ── Release ───────────────────────────────────────
     elif cmd == "release" and len(parts) == 2:
         bid = parts[1]
         if bid not in BAYS:
-            await reply("❌ Invalid bay. Universal: 1–4  Tesla: 5–7")
+            await reply("❌ Invalid bay\\.")
         elif not state[bid]["user_phone"]:
-            await reply(f"Bay {bid} is already free!")
+            await reply(f"Bay {bid} is already free\\!")
         elif state[bid]["user_phone"] != user_id:
             n = get_user_name(state[bid]["user_phone"]) or "someone else"
-            await reply(f"⚠️ Bay {bid} was claimed by *{n}*. Only they can release it.")
+            await reply(f"⚠️ Bay {bid} was claimed by *{n}*\\. Only they can release it\\.")
         else:
             t = elapsed(state[bid]["claimed_at"])
             release(bid)
-            await reply(f"🔌 Bay {bid} released after {t}. Thanks, *{name}*!")
+            await reply(f"🔌 Bay {bid} released after {t}\\. Thanks, *{name}*\\!")
 
     # ── Who ───────────────────────────────────────────
     elif cmd == "who":
@@ -192,69 +209,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 icon = "⚡" if btype == "tesla" else "🔌"
                 lines.append(f"{icon} Bay {bid}: *{n}* · {elapsed(s['claimed_at'])}")
                 found = True
-        await reply("\n".join(lines) if found else "All 7 bays are free! 🎉")
+        await reply("\n".join(lines) if found else "All 7 bays are free\\! 🎉")
 
-    # ── Help / default ────────────────────────────────
+    # ── Help ──────────────────────────────────────────
     else:
         await reply(
             "⚡ *Belk Charging Station*\n\n"
             "🔌 Universal: Bays 1–4\n"
             "⚡ Tesla only: Bays 5–7\n\n"
             "• *status* — see all bays\n"
-            "• *claim [1-7]* — claim a bay\n"
-            "• *release [1-7]* — free your bay\n"
+            "• *claim \\[1\\-7\\]* — claim a bay\n"
+            "• *release \\[1\\-7\\]* — free your bay\n"
             "• *who* — see who's charging\n"
             "• *myname John* — update your name\n"
             "• *help* — show this menu"
         )
 
-# ── Overtime alert ────────────────────────────────────
-bot_app = None
-
-def check_overtime():
-    try:
-        state = get_state()
-        now   = datetime.now().timestamp()
-        for bid, bay in state.items():
-            if not bay["user_phone"] or not bay["claimed_at"]: continue
-            hours = (now - float(bay["claimed_at"])) / 3600
-            if hours >= 7:
-                name  = get_user_name(bay["user_phone"]) or "there"
-                btype = "Tesla-only ⚡" if BAYS[bid] == "tesla" else "Universal 🔌"
-                if bot_app:
-                    asyncio.run_coroutine_threadsafe(
-                        bot_app.bot.send_message(
-                            chat_id=bay["user_phone"],
-                            text=(
-                                f"⏰ *Belk Charging Station Alert*\n\n"
-                                f"Hi {name}, you've had Bay {bid} ({btype}) "
-                                f"for *{int(hours)} hours*.\n\n"
-                                f"Please unplug if you're done so others can charge. 🙏"
-                            ),
-                            parse_mode="Markdown"
-                        ),
-                        asyncio.get_event_loop()
-                    )
-    except Exception as e:
-        print(f"Overtime check error: {e}")
-
 # ── Main ──────────────────────────────────────────────
 def main():
-    global bot_app
-
     init_db()
+    TOKEN  = os.environ["TELEGRAM_BOT_TOKEN"]
+    app    = Application.builder().token(TOKEN).build()
 
-    TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-    bot_app = Application.builder().token(TOKEN).build()
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    bot_app.add_handler(MessageHandler(filters.COMMAND, handle_message))
+    # Register handlers
+    app.add_handler(MessageHandler(filters.TEXT, handle_message))
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(check_overtime, "interval", minutes=30)
-    scheduler.start()
+    # Overtime check every 30 minutes via job queue
+    app.job_queue.run_repeating(check_overtime, interval=1800, first=60)
 
-    print("Telegram EV Bot is running ⚡")
-    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    print("⚡ Telegram EV Bot is running!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
