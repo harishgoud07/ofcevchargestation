@@ -156,7 +156,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Status ────────────────────────────────────────
     if cmd == "status":
-        lines = ["⚡ BELK CHARGING STATION", "", "⚡ Universal —  Bays 1 to 4", ""]
+        lines = ["⚡ BELK CHARGING STATION", "─────────────────────", "", "⚡ Universal —  Bays 1 to 4", ""]
         for b in ["1","2","3","4"]:
             s = state[b]
             if s["user_phone"]:
@@ -174,7 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines.append(f"🟢 Bay {b}  Free")
         fu = sum(1 for b in ["1","2","3","4"] if not state[b]["user_phone"])
         ft = sum(1 for b in ["5","6","7"] if not state[b]["user_phone"])
-        lines += ["", f"⚡ {fu}/4 universal free    ⚡ {ft}/3 Tesla free"]
+        lines += ["", "─────────────────────", f"⚡ {fu}/4 universal free    ⚡ {ft}/3 Tesla free"]
         await reply("\n".join(lines))
 
     # ── Claim ─────────────────────────────────────────
