@@ -184,11 +184,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ── Claim ─────────────────────────────────────────
     elif cmd == "claim" and len(parts) == 2:
         bid = parts[1]
-        if bid not in BAYS:
+        # Check if this person already has a bay
+        already = [b for b, s in state.items() if s["user_phone"] == user_id]
+        if already:
+            await reply(f"⚠️  You already have Bay {already[0]} claimed!\n\nType  release {already[0]}  first before claiming another.")
+        elif bid not in BAYS:
             await reply("❌  Invalid bay.\n\nUniversal: 1 2 3 4\nTesla only: 5 6 7")
         elif state[bid]["user_phone"]:
             n = get_user_name(state[bid]["user_phone"]) or "Someone"
-            await reply(f"⚠️  Bay {bid} is taken by {n} ({elapsed(state[bid]['claimed_at'])}).\n\nSend 'status' to find a free bay.")
+            await reply(f"⚠️  Bay {bid} is taken by {n} ({elapsed(state[bid]['claimed_at'])}).\n\nType  status  to find a free bay.")
         else:
             claim(bid, user_id)
             await reply(f"✅  Bay {bid} claimed, {name}!\n\nType  release {bid}  when you're done.")
