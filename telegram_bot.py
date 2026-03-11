@@ -155,7 +155,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚡ BELK CHARGING STATION",
             "━━━━━━━━━━━━━━━",
             "",
-            "🔌  Universal — Bays 1 to 4",
+            "🔋  Universal — Bays 1 to 4",
         ]
         for b in ["1","2","3","4"]:
             s = state[b]
@@ -163,21 +163,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 n = get_user_name(s["user_phone"]) or "Someone"
                 lines.append(f"  🔴  Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
             else:
-                lines.append(f"  🟢  Bay {b}  Available")
-        lines += ["", "🚗  Tesla Only — Bays 5 to 7"]
+                lines.append(f"  🟢  Bay {b}  Free")
+        lines += ["", "⚡  Tesla Only — Bays 5 to 7"]
         for b in ["5","6","7"]:
             s = state[b]
             if s["user_phone"]:
                 n = get_user_name(s["user_phone"]) or "Someone"
                 lines.append(f"  🔴  Bay {b}  {n}  ({elapsed(s['claimed_at'])})")
             else:
-                lines.append(f"  🟢  Bay {b}  Available")
+                lines.append(f"  🟢  Bay {b}  Free")
         fu = sum(1 for b in ["1","2","3","4"] if not state[b]["user_phone"])
         ft = sum(1 for b in ["5","6","7"] if not state[b]["user_phone"])
         lines += [
             "",
             "━━━━━━━━━━━━━━━",
-            f"🔌  {fu}/4 universal free    🚗  {ft}/3 Tesla free"
+            f"🔋  {fu}/4 universal free    ⚡  {ft}/3 Tesla free"
         ]
         await reply("\n".join(lines))
 
@@ -190,10 +190,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             n = get_user_name(state[bid]["user_phone"]) or "Someone"
             await reply(f"⚠️  Bay {bid} is taken by {n} ({elapsed(state[bid]['claimed_at'])}).\n\nSend 'status' to find a free bay.")
         else:
-            label = "Tesla only 🚗" if BAYS[bid] == "tesla" else "Universal 🔌"
-            warn  = "\n\n⚠️  Note: This is a Tesla-only bay." if BAYS[bid] == "tesla" else ""
             claim(bid, user_id)
-            await reply(f"✅  Bay {bid} claimed!\n{label}{warn}\n\nSend 'release {bid}' when you're done.")
+            await reply(f"✅  Bay {bid} claimed, {name}!\n\nType  release {bid}  when you're done.")
 
     # ── Release ───────────────────────────────────────
     elif cmd == "release" and len(parts) == 2:
@@ -208,7 +206,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             t = elapsed(state[bid]["claimed_at"])
             release(bid)
-            await reply(f"🔓  Bay {bid} released after {t}.\nThanks, {name}! 👍")
+            await reply(f"✅  Bay {bid} released after {t}. Thanks, {name}!")
 
     # ── Who ───────────────────────────────────────────
     elif cmd == "who":
